@@ -1,7 +1,7 @@
 #!/bin/bash
 
 nam="PAC12_75_cpl"
-exp="exp02"
+exp="exp07"
 
 mkdir tmp_sed
 rm tmp_sed/out_all.txt
