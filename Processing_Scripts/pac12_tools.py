@@ -34,20 +34,21 @@ def create_coords_CROCO(ds):
 # Zonal filtering tools:
 # ---------------------------------------------------------
 
-def zhp_filt(var,filt_width):
+def zlp_filt(var,filt_width):
     # Calculate zonal filtered version of a variable
 
-    for dim in var.dims:
-        if dim.startswith('x'):
-            x = dim                                # Name of zonal dimension
-        else:
-            raise RuntimeError("Error in zhp_filt: No zonal dimension found")
+    dims = var.dims
+    inds = [index for index,item in enumerate(dims) if item.startswith('x')]
+    if (len(inds) != 1):
+        raise RuntimeError("Error in zhp_filt: less than or greater than 1 zonal dimension found")
+    else:
+        x = dims[inds[0]]
 
     dx = (var[x][1]-var[x][0]).values
-    
+
     return(var.rolling({x:int(filt_width/dx)},center=True).mean())
 
-def calc_zhp_std_variables(data_in,file_out):
+def calc_zhp_std_variables(data_in,file_out,filt_width):
     """
     Calculates:
     1) zonal-high pass filtered variances of SST, SSH and velocities
@@ -55,16 +56,69 @@ def calc_zhp_std_variables(data_in,file_out):
 
     from a month of daily CROCO output data and saves them back into a
     netcdf file in the same folder.
+
+    data_in = netcdf file of daily CROCO output data  (croco_out_day.nc)
+    file_out = filename to use for output file.
+    filt_width = filter window width in degrees.
     """
 
-    data = xr.open_dataset(data_in,chunks={'time_counter':1})
-
+    data = xr.open_dataset(data_in,chunks={'time_counter':1}).rename({'time_counter':'time'})
     data = create_coords_CROCO(data)
 
-    
+    DT = xr.DataArray(data=len(data.time)).assign_attrs({'Name':'Number of days in averaging period'})
 
+    # SST:
+    SST_hp = data.temp_surf - zlp_filt(data.temp_surf,filt_width)
+    SST_hp_var = (SST_hp**2.).mean('time').load()
+
+    # SSH:
+    SSH_hp = data.zeta - zlp_filt(data.zeta,filt_width)
+    SSH_hp_var = (SSH_hp**2.).mean('time').load()
+
+    # U, EWWU, MWWU:
+    U_lp    = zlp_filt(data.u_surf,filt_width)
+    U_hp    = data.u_surf - U_lp
+    TAUX_lp = zlp_filt(data.sustr,filt_width)
+    TAUX_hp = data.sustr - TAUX_lp
+
+    U_hp_var = (U_hp**2.).mean('time').load()
+    U_lp_var = (U_lp**2.).mean('time').load()
+
+    EWWU = (U_hp*TAUX_hp).mean('time').load()
+    MWWU = (U_lp*TAUX_lp).mean('time').load()
+
+    # V, EWWV, MWWV:
+    V_lp    = zlp_filt(data.v_surf,filt_width)
+    V_hp    = data.v_surf - V_lp
+    TAUY_lp = zlp_filt(data.svstr,filt_width)
+    TAUY_hp = data.svstr - TAUY_lp
+
+    V_hp_var = (V_hp**2.).mean('time').load()
+    V_lp_var = (V_lp**2.).mean('time').load() # Not sure about this one...
+
+    EWWV = (V_hp*TAUY_hp).mean('time').load()
+    MWWV = (V_lp*TAUY_lp).mean('time').load()
+
+    # Add metadata:
+    SST_hp_var = SST_hp_var.assign_attrs({'Name':'SST high-pass variance'})
+    SSH_hp_var = SSH_hp_var.assign_attrs({'Name':'SSH high-pass variance'})
+    U_hp_var = U_hp_var.assign_attrs({'Name':'U high-pass variance'})
+    V_hp_var = V_hp_var.assign_attrs({'Name':'V high-pass variance'})
+    U_lp_var = U_lp_var.assign_attrs({'Name':'U low-pass variance'})
+    V_lp_var = V_lp_var.assign_attrs({'Name':'V low-pass variance'})
+    EWWU = EWWU.assign_attrs({'Name':'U eddy wind-work'})
+    MWWU = MWWU.assign_attrs({'Name':'U mean wind-work'})
+    EWWV = EWWV.assign_attrs({'Name':'V eddy wind-work'})
+    MWWV = MWWV.assign_attrs({'Name':'V mean wind-work'})
+
+    # Combine into a single Dataset and write out:
+    ds = xr.Dataset(data_vars={'SSH_hp_var':SSH_hp_var,'SST_hp_var':SST_hp_var,
+                  'U_hp_var':U_hp_var,'V_hp_var':V_hp_var,'U_lp_var':U_lp_var,'V_lp_var':V_lp_var,
+                  'EWWU':EWWU,'MWWU':MWWU,'EWWV':EWWV,'MWWV':MWWV,'DT':DT})
+    ds.to_netcdf(file_out)
+                               
 # Old stuff
-# ---------------------------
+# ----------------------------------------------------------------------------------------------------------
 
 # Define a function to calculate depths (python script adapted from croco_tools/Preprocessing_tools/zlevs.m):
 def calc_z(typ,ds):

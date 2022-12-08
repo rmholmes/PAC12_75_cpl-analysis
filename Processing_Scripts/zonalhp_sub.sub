@@ -1,0 +1,13 @@
+#!/bin/bash
+#PBS -N XXEXPXX-XXYRXX
+#PBS -P e14
+#PBS -l ncpus=1
+#PBS -l mem=2GB
+#PBS -l walltime=2:00:00
+#PBS -l wd
+#PBS -l storage=gdata/hh5+gdata/e14
+#PBS -q express
+#PBS -M r.holmes@sydney.edu.au
+#PBS -m e
+
+python3 zonalhp_job.py /g/data/e14/rmh561/croco/archive/PAC12_75_cpl/PAC12_75_cpl_XXEXPXX/ XXYRXX
