@@ -6,7 +6,7 @@ import sys, os, glob
 # General tools:
 # ---------------------------------------------------------
 
-def do_coords(ds):
+def create_coords_CROCO(ds):
 
     try:
         ds["x_rho"] = ds.nav_lon_rho.isel(y_rho=0)
@@ -29,9 +29,10 @@ def do_coords(ds):
     except:
         pass
 
+    return(ds)
 
 # Zonal filtering tools:
-                                    # ---------------------------------------------------------
+# ---------------------------------------------------------
 
 def zhp_filt(var,filt_width):
     # Calculate zonal filtered version of a variable
@@ -58,74 +59,86 @@ def calc_zhp_std_variables(data_in,file_out):
 
     data = xr.open_dataset(data_in,chunks={'time_counter':1})
 
-    d["x_rho"] = d.nav_lon_rho.isel(y_rho=0)
-    d["y_rho"] = d.nav_lat_rho.isel(x_rho=0)
-    d["x_w"]   = d.nav_lon_rho.isel(y_rho=0).rename({'x_rho':'x_w'})
-    d["y_w"]   = d.nav_lat_rho.isel(x_rho=0).rename({'y_rho':'y_w'})
-    d["x_u"]   = d.nav_lon_u.isel(y_u=0)
-    d["y_u"]   = d.nav_lat_u.isel(x_u=0)
-    d["x_v"]   = d.nav_lon_v.isel(y_v=0)
-    d["y_v"]   = d.nav_lat_v.isel(x_v=0)
-    d = d.set_coords({'x_rho','y_rho','x_u','y_u','x_v','y_v','x_w','y_w'})
-    
-
+    data = create_coords_CROCO(data)
 
     
-# Files:
-PI_or_his = 1
-obase = '/scratch/e14/rmh561/access-cm2/HCvar/'
 
-if PI_or_his==1:
-    base = '/g/data/p66/cm2704/archive/bi889/history/ocn/';
-    name = 'PIcontrolTb05'
-elif PI_or_his==0:
-    base = '/g/data/p66/cm2704/archive/bj594/history/ocn/';
-    name = 'hisTb05'
-elif PI_or_his==2:
-    base = '/g/data/p66/cm2704/archive/by350/history/ocn/';
-    name = 'hisNATe1Tb05'
-elif PI_or_his==3:
-    base = '/g/data/p66/cm2704/archive/by438/history/ocn/';
-    name = 'hisNATe2'
-elif PI_or_his==4:
-    base = '/g/data/p66/cm2704/archive/by563/history/ocn/';
-    name = 'hisNATe3'
-elif PI_or_his==5:
-    base = '/g/data/p66/cm2704/archive/bw966/history/ocn/';
-    name = 'hisAERe1'
-elif PI_or_his==6:
-    base = '/g/data/p66/cm2704/archive/bu010/history/ocn/';
-    name = 'hisGHGe1'
+# Old stuff
+# ---------------------------
 
-files = glob.glob(base + 'ocean_month.nc-*')
-dates = [x[-8:] for x in files]
+# Define a function to calculate depths (python script adapted from croco_tools/Preprocessing_tools/zlevs.m):
+def calc_z(typ,ds):
+    # Function to calculate depth of levels from CROCO output. This script has been adapted
+    # from the croco_tools/Preprocessing_tools/zlevs.m script.
+    # 
+    # Inputs:
+    # 
+    # ds = CROCO history or average file xarray dataset
+    # typ = 'r'; rho-points, 'w'; w-points
+    #
+    # Outputs:
+    # z = depth of rho or w points
+    
+    if(ds.Vtransform != 2):
+        print('ERROR - wrong Vtransform')
+        return
+    
+    if (typ=='r'):
+        Cs = ds.Cs_r
+        sc = ds.sc_r
+        z = xr.zeros_like(ds.temp).rename('z_rho')
+        N = len(ds.s_rho)
+    elif (typ=='w'):
+        Cs = ds.Cs_w
+        sc = ds.sc_w
+        z = xr.zeros_like(ds.w).rename('z_w')
+        N = len(ds.s_w)
+    
+    h = ds.h#.where(ds.h==0.,1.e-2,ds.h)
+    #Dcrit = 0.01
+    zeta = ds.zeta#.where(ds.zeta<(Dcrit-h),Dcrit-h,ds.zeta)
+    
+    hinv=1/h;
+    h2=(h+ds.hc)
+    cff = ds.hc*sc
+    h2inv = 1/h2
+    
+    z = (cff+Cs*h)*h/h2 + zeta*(1+(cff+Cs*h)*h2inv)
+    
+    return(z)
 
-dates = sorted(dates,key=lambda x: int(x))
-
-# Mask:
-#msk = 'ypm60'
-msk = ''
-
-# Split into sets of 600 runs for PI control (ss is 0,1):
-ss = 1
-dates = dates[ss*600:ss*600+600]
-# dates = ['11500630']
-# dates = ['19640630','18591231']
-
-# Testing (do only 3):
-# dates = dates[:3]
-
-print(dates)
-print(len(dates))#len(dates))
-for i in range(len(dates)):
-    fname = base + 'ocean_month.nc-' + dates[i]
-    oname = obase + 'CM2_' + name + '_' + msk + '_' + dates[i] + '.mat'
-    fscr = 'fscripts/Process_ACCESS_' + msk + '_' + dates[i]
-    os.system('cp Process_ACCESS_CM2 ' + fscr)
-    with fileinput.FileInput(fscr, inplace=True) as file:
-        for line in file:
-            line_out = line.replace('XXNAMEXX', 'P' + dates[i]).replace('XXFNAMEXX', fname).replace('XXONAMEXX', oname).replace('XXMSKXX', msk)
-            print(line_out, end='')
-    os.system('qsub ' + fscr)
-            
-                    
+# Define a function to calculate depths (python script adapted from croco_tools/Preprocessing_tools/zlevs.m):
+def calc_z1D(typ,ds,h,zeta):
+    # Function to calculate 1D depth of levels from CROCO output given an input H and zeta
+    # 
+    # Inputs:
+    # 
+    # ds = CROCO history or average file xarray dataset
+    # typ = 'r'; rho-points, 'w'; w-points
+    #
+    # Outputs:
+    # z = depth of rho or w points
+    
+    if(ds.Vtransform != 2):
+        print('ERROR - wrong Vtransform')
+        return
+    
+    if (typ=='r'):
+        Cs = ds.Cs_r
+        sc = ds.sc_r
+        z = xr.zeros_like(Cs).rename('z_rho')
+        N = len(ds.s_rho)
+    elif (typ=='w'):
+        Cs = ds.Cs_w
+        sc = ds.sc_w
+        z = xr.zeros_like(Cs).rename('z_w')
+        N = len(ds.s_w)
+    
+    hinv=1/h;
+    h2=(h+ds.hc)
+    cff = ds.hc*sc
+    h2inv = 1/h2
+    
+    z = (cff+Cs*h)*h/h2 + zeta*(1+(cff+Cs*h)*h2inv)
+    
+    return(z)
