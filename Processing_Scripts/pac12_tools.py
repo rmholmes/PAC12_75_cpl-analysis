@@ -48,7 +48,7 @@ def zlp_filt(var,filt_width):
 
     return(var.rolling({x:int(filt_width/dx)},center=True).mean())
 
-def calc_zhp_std_variables(data_in,file_out,filt_width):
+def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     """
     Calculates:
     1) zonal-high pass filtered variances of SST, SSH and velocities
@@ -57,47 +57,45 @@ def calc_zhp_std_variables(data_in,file_out,filt_width):
     from a month of daily CROCO output data and saves them back into a
     netcdf file in the same folder.
 
-    data_in = netcdf file of daily CROCO output data  (croco_out_day.nc)
+    file_in_day = netcdf file of daily CROCO output data  (croco_out_day.nc)
     file_out = filename to use for output file.
     filt_width = filter window width in degrees.
     """
 
-    data = xr.open_dataset(data_in,chunks={'time_counter':1}).rename({'time_counter':'time'})
+    data = xr.open_dataset(file_in_day,chunks={'time_counter':1})
     data = create_coords_CROCO(data)
-
-    DT = xr.DataArray(data=len(data.time)).assign_attrs({'Name':'Number of days in averaging period'})
 
     # SST:
     SST_hp = data.temp_surf - zlp_filt(data.temp_surf,filt_width)
-    SST_hp_var = (SST_hp**2.).mean('time').load()
+    SST_hp_var = (SST_hp**2.).mean('time_counter').load()
 
     # SSH:
     SSH_hp = data.zeta - zlp_filt(data.zeta,filt_width)
-    SSH_hp_var = (SSH_hp**2.).mean('time').load()
+    SSH_hp_var = (SSH_hp**2.).mean('time_counter').load()
 
-    # U, EWWU, MWWU:
+    # # U, EWWU, MWWU:
     U_lp    = zlp_filt(data.u_surf,filt_width)
     U_hp    = data.u_surf - U_lp
     TAUX_lp = zlp_filt(data.sustr,filt_width)
     TAUX_hp = data.sustr - TAUX_lp
 
-    U_hp_var = (U_hp**2.).mean('time').load()
-    U_lp_var = (U_lp**2.).mean('time').load()
+    U_hp_var = (U_hp**2.).mean('time_counter').load()
+    U_lp_var = (U_lp**2.).mean('time_counter').load()
 
-    EWWU = (U_hp*TAUX_hp).mean('time').load()
-    MWWU = (U_lp*TAUX_lp).mean('time').load()
+    EWWU = (U_hp*TAUX_hp).mean('time_counter').load()
+    MWWU = (U_lp*TAUX_lp).mean('time_counter').load()
 
-    # V, EWWV, MWWV:
+    # # V, EWWV, MWWV:
     V_lp    = zlp_filt(data.v_surf,filt_width)
     V_hp    = data.v_surf - V_lp
     TAUY_lp = zlp_filt(data.svstr,filt_width)
     TAUY_hp = data.svstr - TAUY_lp
 
-    V_hp_var = (V_hp**2.).mean('time').load()
-    V_lp_var = (V_lp**2.).mean('time').load() # Not sure about this one...
+    V_hp_var = (V_hp**2.).mean('time_counter').load()
+    V_lp_var = (V_lp**2.).mean('time_counter').load() # Not sure about this one...
 
-    EWWV = (V_hp*TAUY_hp).mean('time').load()
-    MWWV = (V_lp*TAUY_lp).mean('time').load()
+    EWWV = (V_hp*TAUY_hp).mean('time_counter').load()
+    MWWV = (V_lp*TAUY_lp).mean('time_counter').load()
 
     # Add metadata:
     SST_hp_var = SST_hp_var.assign_attrs({'Name':'SST high-pass variance'})
@@ -111,10 +109,21 @@ def calc_zhp_std_variables(data_in,file_out,filt_width):
     EWWV = EWWV.assign_attrs({'Name':'V eddy wind-work'})
     MWWV = MWWV.assign_attrs({'Name':'V mean wind-work'})
 
+    # Deal with time:
+    DT = xr.DataArray(data=len(data.time_counter)).assign_attrs({'Name':'Number of days in averaging period'})
+    data_mon = xr.open_dataset(file_in_mon,chunks={'time_counter':1})
+    time_counter = data_mon.time_counter
+
     # Combine into a single Dataset and write out:
     ds = xr.Dataset(data_vars={'SSH_hp_var':SSH_hp_var,'SST_hp_var':SST_hp_var,
                   'U_hp_var':U_hp_var,'V_hp_var':V_hp_var,'U_lp_var':U_lp_var,'V_lp_var':V_lp_var,
-                  'EWWU':EWWU,'MWWU':MWWU,'EWWV':EWWV,'MWWV':MWWV,'DT':DT})
+                  'EWWU':EWWU,'MWWU':MWWU,'EWWV':EWWV,'MWWV':MWWV,
+                  'DT':DT,'time_counter':time_counter})
+    # Add time_counter to variables:
+    for v in ['SSH_hp_var','SST_hp_var','U_hp_var','U_lp_var','V_hp_var','V_lp_var','EWWU','MWWU','EWWV','MWWV','DT']:
+        ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
+
+    ds.encoding = {'unlimited_dims': ['time_counter']}
     ds.to_netcdf(file_out)
                                
 # Old stuff
