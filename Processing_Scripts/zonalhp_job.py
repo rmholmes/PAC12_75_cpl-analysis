@@ -5,7 +5,7 @@ import sys
 import glob
 import pac12_tools as ptools
 
-filt_width = 12.
+filt_width = 6.
 
 base = sys.argv[1]
 year = sys.argv[2]

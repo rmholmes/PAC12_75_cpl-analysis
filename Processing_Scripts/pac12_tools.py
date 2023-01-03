@@ -34,8 +34,15 @@ def create_coords_CROCO(ds):
 # Zonal filtering tools:
 # ---------------------------------------------------------
 
-def zlp_filt(var,filt_width):
-    # Calculate zonal filtered version of a variable
+def zlp_filt(var,width,typ='gau',cut=0.1):
+    # Calculate zonal filtered version of a variable using either:
+    #
+    # typ='box': a simple boxcar moving average with width of width in
+    # degrees.
+    #
+    # typ='gau': a Gaussian filter of standard deviation width (in
+    # degrees). Keep only values greater than cut in relative
+    # size. This function reproduces the SST filtering used in OASIS.
 
     dims = var.dims
     inds = [index for index,item in enumerate(dims) if item.startswith('x')]
@@ -46,7 +53,26 @@ def zlp_filt(var,filt_width):
 
     dx = (var[x][1]-var[x][0]).values
 
-    return(var.rolling({x:int(filt_width/dx)},center=True).mean())
+    if (typ == 'gau'): # Gaussian filter
+        sigx = int(width/dx)
+        nn = int(3*2*sigx+1)
+
+        xx = np.arange(0.,nn)
+        dd = np.sqrt(((xx-int(nn/2))**2)/sigx**2)
+        ww = 1./(np.sqrt(np.pi)*sigx)*np.exp(-dd**2)
+        keepww = np.argwhere((ww.ravel() >= max(ww.ravel())*cut))
+        nnok=len(keepww)
+        ww = ww.ravel()[keepww.astype('int')]
+        ww = ww/ww.sum()
+        
+        weight = xr.DataArray(ww.ravel(), dims=['window'])
+
+        return(var.rolling({x:nnok},center=True).construct('window').dot(weight))
+        
+    elif (typ == 'box'): # Boxcar filter
+        return(var.rolling({x:int(width/dx)},center=True).mean())
+    else:
+        raise RuntimeError("Error in zhp_filt: Incorrect filter type chosen. Please choose box or gau")
 
 def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     """
@@ -59,7 +85,7 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
 
     file_in_day = netcdf file of daily CROCO output data  (croco_out_day.nc)
     file_out = filename to use for output file.
-    filt_width = filter window width in degrees.
+    filt_width = filter window width in degrees (see zlp_filt function above).
     """
 
     data = xr.open_dataset(file_in_day,chunks={'time_counter':1})
