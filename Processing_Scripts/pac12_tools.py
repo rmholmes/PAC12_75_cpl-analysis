@@ -123,6 +123,11 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     EWWV = (V_hp*TAUY_hp).mean('time_counter').load()
     MWWV = (V_lp*TAUY_lp).mean('time_counter').load()
 
+    # V_hp*SST_hp for TIW meridional heat flux:
+    grid = Grid(data,coords={"y":{"center":"y_rho","inner":"y_v"},"x":{"center":"x_rho","inner":"x_u"}},periodic=False)
+    VSST = (grid.interp(V_hp,'y').rename({'x_v':'x_rho'})*SST_hp).mean('time_counter').load()
+    USST = (grid.interp(U_hp,'x').rename({'y_u':'y_rho'})*SST_hp).mean('time_counter').load()
+    
     # Add metadata:
     SST_hp_var = SST_hp_var.assign_attrs({'Name':'SST high-pass variance'})
     SSH_hp_var = SSH_hp_var.assign_attrs({'Name':'SSH high-pass variance'})
@@ -134,6 +139,8 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     MWWU = MWWU.assign_attrs({'Name':'U mean wind-work'})
     EWWV = EWWV.assign_attrs({'Name':'V eddy wind-work'})
     MWWV = MWWV.assign_attrs({'Name':'V mean wind-work'})
+    VSST = VSST.assign_attrs({'Name':'V high-pass * SST high-pass mean'})
+    USST = USST.assign_attrs({'Name':'U high-pass * SST high-pass mean'})
 
     # Deal with time:
     DT = xr.DataArray(data=len(data.time_counter)).assign_attrs({'Name':'Number of days in averaging period'})
@@ -143,10 +150,11 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     # Combine into a single Dataset and write out:
     ds = xr.Dataset(data_vars={'SSH_hp_var':SSH_hp_var,'SST_hp_var':SST_hp_var,
                   'U_hp_var':U_hp_var,'V_hp_var':V_hp_var,'U_lp_var':U_lp_var,'V_lp_var':V_lp_var,
-                  'EWWU':EWWU,'MWWU':MWWU,'EWWV':EWWV,'MWWV':MWWV,
+                  'EWWU':EWWU,'MWWU':MWWU,'EWWV':EWWV,'MWWV':MWWV,'VSST':VSST,'USST':USST,
                   'DT':DT,'time_counter':time_counter})
+    
     # Add time_counter to variables:
-    for v in ['SSH_hp_var','SST_hp_var','U_hp_var','U_lp_var','V_hp_var','V_lp_var','EWWU','MWWU','EWWV','MWWV','DT']:
+    for v in ['SSH_hp_var','SST_hp_var','U_hp_var','U_lp_var','V_hp_var','V_lp_var','EWWU','MWWU','EWWV','MWWV','VSST','USST','DT']:
         ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
 
     ds.encoding = {'unlimited_dims': ['time_counter']}
