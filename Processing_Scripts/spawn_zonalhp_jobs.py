@@ -6,12 +6,11 @@ import fileinput
 import glob
 
 # Files:
-experiments = ['14'] # Testing on 14.
+# experiments = ['14'] # Testing on 14.
 # experiments = ['02','05','06','08','09','10','11','12','13',
-#               '15','16','17','18','19','20','21,'22','23','24','25']
+#               '15','16','17','18','19','20','21','24','25']
+experiments = ['22','23']
 years = ['2015','2016','2017','2018']
-# experiments = ['13']#,'06']#,'08','09','10','11','12','13']
-# years = ['2018']#,'2016']#,'2017','2018']
 
 for e in range(len(experiments)):
     for i in range(len(years)):
