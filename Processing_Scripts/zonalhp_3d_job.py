@@ -5,6 +5,10 @@ import sys
 import glob
 import pac12_tools as ptools
 
+# Use dask:
+from dask.distributed import Client
+client = Client(n_workers=8)
+
 filt_width = 6.
 
 base = sys.argv[1]
