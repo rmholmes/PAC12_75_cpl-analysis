@@ -1,0 +1,16 @@
+#!/bin/bash
+#PBS -N XXEXPXX-XXYRXX
+#PBS -P au06
+#PBS -l ncpus=1
+#PBS -l mem=8GB
+#PBS -l walltime=01:00:00
+#PBS -l wd
+#PBS -l storage=gdata/hh5+gdata/e14
+#PBS -q express
+#PBS -M r.holmes@sydney.edu.au
+#PBS -m e
+
+module use /g/data3/hh5/public/modules
+module load conda/analysis3
+
+python3 zonalhp_3d_job.py /g/data/e14/rmh561/croco/archive/PAC12_75_cpl/PAC12_75_cpl_XXEXPXX/ XXYRXX
