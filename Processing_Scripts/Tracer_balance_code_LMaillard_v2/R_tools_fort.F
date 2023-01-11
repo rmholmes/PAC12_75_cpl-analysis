@@ -36,7 +36,7 @@
 
 !# include "R_tools_fort_routines/rho_eos.F"
 
-!# include "R_tools_fort_routines/rho1_eos.F"
+# include "R_tools_fort_routines/rho1_eos.F"
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!Compute Brunt-Vaissala frequency (adapted from rho_eos.F)
@@ -50,7 +50,7 @@
 !!Compute buoyancy (adapted from rho_eos.F)
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-!# include "R_tools_fort_routines/get_buoy.F"
+# include "R_tools_fort_routines/get_buoy.F"
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!compute neutral density gradients 

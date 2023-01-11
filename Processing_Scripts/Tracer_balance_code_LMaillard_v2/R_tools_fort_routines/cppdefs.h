@@ -79,6 +79,7 @@
 #define STFLUX_CFB
 #define LMD_SKPP2005
 #define NF_CLOBBER
+#define DUKO_2001
 
 #include "set_global_definitions.h"
 
