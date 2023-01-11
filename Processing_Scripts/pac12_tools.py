@@ -4,7 +4,6 @@ import numpy as np
 import sys, os, glob
 
 # Import Lisa's fortran codes:
-sys.path.append('/g/data/e14/rmh561/croco/analysis/Processing_Scripts/Tracer_balance_code_LMaillard_v2')
 import R_tools_fort as toolsF
 
 # General tools:
