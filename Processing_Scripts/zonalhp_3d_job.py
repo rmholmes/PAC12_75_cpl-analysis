@@ -5,26 +5,20 @@ import sys
 import glob
 import pac12_tools as ptools
 
-# Use dask:
-from dask.distributed import Client
-client = Client(n_workers=8)
+if __name__ == "__main__":
 
-filt_width = 6.
+    filt_width = 6.
 
-base = sys.argv[1]
-year = sys.argv[2]
+    base = sys.argv[1]
+    year = sys.argv[2]
+    month = sys.argv[3]
 
-files_in_day = glob.glob(base + year + '*/croco_out_day.nc')
-files_in_dayTIW = [f[:-6] + 'day_TIW.nc' for f in files_in_day]
-files_in_mon = [f[:-6] + 'mon.nc' for f in files_in_day]
-files_in_grd = [f[:-6] + 'grd.nc' for f in files_in_day]
-files_out = [f[:-6] + 'mon_TIWhp.nc' for f in files_in_day]
+    file_in_day = glob.glob(base + year + month + '*/croco_out_day.nc')[0]
+    file_in_dayTIW = file_in_day[:-6] + 'day_TIW.nc'
+    file_in_mon = file_in_day[:-6] + 'mon.nc'
+    file_in_grd = file_in_day[:-6] + 'grd.nc'
+    file_out = file_in_day[:-6] + 'mon_TIWhp.nc'
 
-for i,f_in in enumerate(files_in_day):
-    f_in_dayTIW = files_in_dayTIW[i]
-    f_in_grd = files_in_grd[i]
-    f_in_mon = files_in_mon[i]
-    f_out = files_out[i]
-    sys.stdout.write(f_in + ' to ' + f_out + '\n')
-    ptools.calc_zhp_3d_variables(f_in_dayTIW,f_in,f_in_mon,f_in_grd,f_out,filt_width)
+    sys.stdout.write(file_in_dayTIW + ' to ' + file_out + '\n');sys.stdout.flush();
+    ptools.calc_zhp_3d_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,file_out,filt_width)
 

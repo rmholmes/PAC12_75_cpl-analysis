@@ -26,10 +26,12 @@ def create_coords_CROCO(ds):
         ds["y_v"]   = ds.nav_lat_v.isel(x_v=0)
         ds = ds.set_coords({'x_rho','y_rho','x_u','y_u','x_v','y_v','x_w','y_w'})
     except:
-        ds["x_rho"] = ds.nav_lon.isel(y=0)
-        ds["y_rho"] = ds.nav_lat.isel(x=0)
-        ds = ds.set_coords({'x_rho','y_rho'})
-
+        try:
+            ds["x_rho"] = ds.nav_lon.isel(y=0)
+            ds["y_rho"] = ds.nav_lat.isel(x=0)
+            ds = ds.set_coords({'x_rho','y_rho'})
+        except:
+            pass
     try:
         ds["z_rho"] =  ds.z_rho.mean('time').fillna(0.)
         ds = ds.set_coords({'z_rho'})
@@ -344,8 +346,8 @@ def calc_zhp_3d_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,fil
     wb_np = wb_np/tL
 
     # Setup meta data and xarray:
-    drop_list = ['nav_lat','nav_lon','time_centered']
-    arr = xr.zeros_like(data_dayTIW.temp.isel(time_counter=0)).drop(drop_list)
+    # drop_list = ['nav_lat','nav_lon','time_centered']
+    arr = xr.zeros_like(data_dayTIW.temp.isel(time_counter=0)) #.drop(drop_list)
     uuUx = arr.copy().rename('uuUx').assign_attrs({'long_name':'uu*Ux','units':'m2s-3'}); uuUx.values = uuUx_np
     uvUy = arr.copy().rename('uvUy').assign_attrs({'long_name':'uv*Uy','units':'m2s-3'}); uvUy.values = uvUy_np
     uvVx = arr.copy().rename('uvVx').assign_attrs({'long_name':'uv*Vx','units':'m2s-3'}); uvVx.values = uvVx_np
