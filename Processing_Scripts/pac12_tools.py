@@ -79,8 +79,8 @@ def create_coords_CROCO_TIW(ds,ds_grd):
 
     # Extract grid variables from parent grid:
     ds['hc'] = ds_grd.hc
-    ds['Cs_r'] = ds_grd.Cs_r
-    ds['Cs_w'] = ds_grd.Cs_w
+    ds['Cs_r'] = ds_grd.Cs_r.isel(s_rho=slice(S1,-1))
+    ds['Cs_w'] = ds_grd.Cs_w.isel(s_w=slice(S1,-1))
     ds['pm'] = ds_grd.pm.isel(x=slice(L1,L1+Lm),y=slice(M1,M1+Mm)).rename({'x':'x_rho','y':'y_rho'})
     ds['pn'] = ds_grd.pn.isel(x=slice(L1,L1+Lm),y=slice(M1,M1+Mm)).rename({'x':'x_rho','y':'y_rho'})
     ds['h'] = ds_grd.h.isel(x=slice(L1,L1+Lm),y=slice(M1,M1+Mm)).rename({'x':'x_rho','y':'y_rho'})
@@ -377,10 +377,121 @@ def calc_zhp_3d_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,fil
     ds.encoding = {'unlimited_dims': ['time_counter']}
     ds.to_netcdf(file_out)
 
+def calc_zhp_3dstd_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,file_out,filt_width):
+    """
+    Calculates some more eddy correlation variables from 3D daily output in the
+    TIW region for energy and heat budget quantification.
+
+    Calculations are performed for one month of output data and then
+    saved back into a netcdf file in the same folder.
+
+    file_in_day = netcdf file of daily CROCO 3D output data in TIW region (croco_out_day_TIW.nc)
+    file_out = filename to use for output file.
+    filt_width = filter window width in degrees (see zlp_filt function above).
+    """
+
+    data_day = xr.open_dataset(file_in_day,chunks={'time_counter':1})
+    data_dayTIW = xr.open_dataset(file_in_dayTIW,chunks={'time_counter':1})
+    data_mon = xr.open_dataset(file_in_mon,chunks={'time_counter':1})
+    data_grd = xr.open_dataset(file_in_grd)
+    data_dayTIW = create_coords_CROCO_TIW(data_dayTIW,data_grd)
+
+    # Setup storage arrays to store mean across months:
+    arr = xr.zeros_like(data_dayTIW.temp.isel(time_counter=0)).values
+    uu_np = np.copy(arr)
+    vv_np = np.copy(arr)
+    uT_np = np.copy(arr)
+    vT_np = np.copy(arr)
+    wT_np = np.copy(arr)
+
+    # Grid object:
+    grid = Grid(data_dayTIW,coords={"x":{"center":"x_rho","outer":"x_u"},
+                                    "y":{"center":"y_rho","outer":"y_v"},
+                                    "s":{"center":"s_rho","outer":"s_w"}},periodic=False) #NOTE: This is different to parent grid becuase _u and _v are outer not inner.
+
+    # start time loop:
+    tL = len(data_dayTIW.time_counter.values)
+    for ti in range(tL):
+        print('calc_zhp_3d_variables: Doing time %03d of %03d, file ' % (ti+1,tL) + file_out)
+
+        u = data_dayTIW.u.isel(time_counter=ti)
+        v = data_dayTIW.v.isel(time_counter=ti)
+        omega = data_dayTIW.omega.isel(time_counter=ti)
+        temp = data_dayTIW.temp.isel(time_counter=ti)
+
+        # Filtering:
+        u_lp = zlp_filt(u,filt_width)
+        u_hp = u - u_lp
+        u_hp = u_hp.chunk({'x_u': u_hp.sizes['x_u']}) # To fix some weird apply_ufunc error below
+        u_lp = u_lp.chunk({'x_u': u_lp.sizes['x_u']}) # To fix some weird apply_ufunc error below
+
+        v_lp = zlp_filt(v,filt_width)
+        v_hp = v - v_lp
+        v_hp = v_hp.chunk({'x_v': v_hp.sizes['x_v']}) # To fix some weird apply_ufunc error below
+        v_lp = v_lp.chunk({'x_v': v_lp.sizes['x_v']}) # To fix some weird apply_ufunc error below
+
+        omega_lp = zlp_filt(omega,filt_width)
+        omega_hp = omega - omega_lp
+        omega_hp = omega_hp.chunk({'x_w': omega_hp.sizes['x_w']}) # To fix some weird apply_ufunc error below
+
+        T_lp = zlp_filt(temp,filt_width)
+        T_hp = temp - T_lp
+        T_hp = T_hp.chunk({'x_rho': T_hp.sizes['x_rho']}) # To fix some weird apply_ufunc error below
+
+        # Do the calculations:
+        uu = grid.interp(u_hp*u_hp,'x').rename({'y_u':'y_rho'})
+        vv = grid.interp(v_hp*v_hp,'y').rename({'x_v':'x_rho'})
+        uT = grid.interp(u_hp,'x').rename({'y_u':'y_rho'})*T_hp
+        vT = grid.interp(v_hp,'y').rename({'x_v':'x_rho'})*T_hp
+        wT = T_hp*grid.interp(omega_hp,'s').rename({'x_w':'x_rho','y_w':'y_rho'})
+        
+        # Save the values:
+        uu_np += uu.values
+        vv_np += vv.values
+        uT_np += uT.values
+        vT_np += vT.values
+        wT_np += wT.values
+
+    # Normalize the values
+    uu_np = uu_np/tL
+    vv_np = vv_np/tL
+    uT_np = uT_np/tL
+    vT_np = vT_np/tL
+    wT_np = wT_np/tL
+
+    # Setup meta data and xarray:
+    # drop_list = ['nav_lat','nav_lon','time_centered']
+    arr = xr.zeros_like(data_dayTIW.temp.isel(time_counter=0)) #.drop(drop_list)
+    uu = arr.copy().rename('uu').assign_attrs({'long_name':'uu','units':'m2s-2'}); uu.values = uu_np
+    vv = arr.copy().rename('vv').assign_attrs({'long_name':'vv','units':'m2s-2'}); vv.values = vv_np
+    uT = arr.copy().rename('uT').assign_attrs({'long_name':'uT','units':'ms-1degC'}); uT.values = uT_np
+    vT = arr.copy().rename('vT').assign_attrs({'long_name':'vT','units':'ms-1degC'}); vT.values = vT_np
+    wT = arr.copy().rename('wT').assign_attrs({'long_name':'wT','units':'ms-1degC'}); wT.values = wT_np
+    
+    # Deal with time:
+    DT = xr.DataArray(data=len(data_day.time_counter)).assign_attrs({'Name':'Number of days in averaging period'})
+    time_counter = data_mon.time_counter.values
+
+    # Combine into a single Dataset and write out:
+    ds = xr.Dataset(data_vars={'uu':uu,
+                               'vv':vv,
+                               'uT':uT,
+                               'vT':vT,
+                               'wT':wT,
+                               'DT':DT,'time_counter':time_counter})
+    
+    # Add time_counter to variables:
+    for v in ['uu','vv','uT','vT','wT','DT']:
+        ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
+
+    ds.encoding = {'unlimited_dims': ['time_counter']}
+    ds.to_netcdf(file_out)
+
 # # Old stuff
 # # ----------------------------------------------------------------------------------------------------------
 
 # # Define a function to calculate depths (python script adapted from croco_tools/Preprocessing_tools/zlevs.m):
+
 # def calc_z(typ,ds):
 #     # Function to calculate depth of levels from CROCO output. This script has been adapted
 #     # from the croco_tools/Preprocessing_tools/zlevs.m script.

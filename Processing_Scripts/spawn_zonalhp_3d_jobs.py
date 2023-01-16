@@ -7,12 +7,12 @@ import glob
 import sys
 
 # Files:
-experiments = ['09']#'05','09','17','18','19']
+experiments = ['05','09','17','18','19']
 # experiments = ['02','05','06','08','09','10','11','12','13',
 #               '15','16','17','18','19','20','21','24','25']
 # experiments = ['22','23']
-years = ['2017']#['2015','2016','2017','2018']
-months = [7] #range(12)
+years = ['2015','2016','2017','2018']
+months = range(12)
 
 for e in range(len(experiments)):
     for i in range(len(years)):
