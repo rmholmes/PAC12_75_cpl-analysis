@@ -33,7 +33,7 @@ def create_coords_CROCO(ds):
         except:
             pass
     try:
-        ds["z_rho"] =  ds.z_rho.mean('time').fillna(0.)
+        ds["z_rho"] =  ds.z_rho.isel(time=0).fillna(0.)
         ds = ds.set_coords({'z_rho'})
     except:
         pass
