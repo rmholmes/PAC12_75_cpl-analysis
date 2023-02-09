@@ -40,6 +40,19 @@ def create_coords_CROCO(ds):
 
     return(ds)
 
+def create_coords_WRF(ds):
+    """
+    Creates 1D coordinates from 2D coordinates assuming mercator in
+    EPAC WRF. Deal with longitude cyclicity
+    """
+
+    ds["nav_lon"] = ds.nav_lon.where(ds.nav_lon>0.,ds.nav_lon+360.)
+    
+    ds["x"] = ds.nav_lon.isel(y=0)
+    ds["y"] = ds.nav_lat.isel(x=0)
+    ds.set_coords({'x','y'})
+    return(ds)
+
 def create_coords_CROCO_TIW(ds,ds_grd):
     """
     Cleans up and creates 1D coordinates assuming mercator for
@@ -86,6 +99,38 @@ def create_coords_CROCO_TIW(ds,ds_grd):
     ds['h'] = ds_grd.h.isel(x=slice(L1,L1+Lm),y=slice(M1,M1+Mm)).rename({'x':'x_rho','y':'y_rho'})
 
     return(ds)
+
+def create_WRF_xgcm(ds):
+    """
+    Creates a WRF xgcm grid object from WRF input dataset
+    """
+    # x and y dimensions/coords:
+    ds = ds.drop(ds.keys())
+    tmp = xr.Dataset({"tmp": (("y_v","x_u"),np.zeros((len(ds.y)-1,len(ds.x)-1)),),},
+                    coords={"x_u":(ds.x[1:].values+ds.x[:-1].values)/2.,
+                            "y_v": (ds.y[1:].values+ds.y[:-1].values)/2.},)
+    ds = ds.assign(tmp).drop('tmp')
+
+    wrf_grid = Grid(ds,coords={"x":{"center":"x","inner":"x_u"},
+                               "y":{"center":"y","inner":"y_v"}},periodic=False)
+
+    # Metrics:
+    lat_to_m = 2*np.pi*6378000.0/360.0;
+    dy_v = wrf_grid.diff(ds.nav_lat,'y')*lat_to_m
+    dx_u = wrf_grid.diff(ds.nav_lon,'x')* \
+                                lat_to_m*np.cos(np.pi/180*wrf_grid.interp(ds.nav_lat,'x'))
+    area_psi = wrf_grid.interp(dx_u,'y')*wrf_grid.interp(dy_v,'x')
+    ds = ds.assign(dy_v=dy_v).assign(dx_u=dx_u).assign(area_psi=area_psi)
+
+    metrics = {
+            ('x',): ['dx_u'], # X distances
+            ('y',): ['dy_v'], # Y distances
+            ('x', 'y'): ['area_psi'] # Areas
+        }
+    wrf_grid = Grid(ds,coords={"x":{"center":"x","inner":"x_u"},
+                               "y":{"center":"y","inner":"y_v"}},periodic=False,metrics=metrics)
+
+    return(wrf_grid)
 
 def TIWt(ds):
     """
@@ -482,6 +527,96 @@ def calc_zhp_3dstd_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,
     
     # Add time_counter to variables:
     for v in ['uu','vv','uT','vT','wT','DT']:
+        ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
+
+    ds.encoding = {'unlimited_dims': ['time_counter']}
+    ds.to_netcdf(file_out)
+
+def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
+    """
+
+    Calculates zonal-high-pass filtered variances of WRF surface
+    variables from WRF daily data and saves back into a monthly netcdf
+    file in the same folder.
+
+    file_in_day = netcdf file of daily WRF surface output data  (wrf3d_1D_*.nc)
+    file_in_month = netcdf file for monthly CROCO output (just to get time value)
+    file_out = filename to use for output file.
+    filt_width = filter window width in degrees (see zlp_filt function above).
+    """
+
+    data = xr.open_dataset(file_in_day,chunks={'time_counter':1})
+    data = create_coords_WRF(data)
+    wrf_grid = create_WRF_xgcm(data)
+
+    # SST:
+    SST_hp = data.SST - zlp_filt(data.SST,filt_width)
+
+    # Surface winds:
+    WX_hp = data.U_PHYL1 - zlp_filt(data.U_PHYL1,filt_width)
+    WY_hp = data.V_PHYL1 - zlp_filt(data.V_PHYL1,filt_width)
+
+    # Surface stresses:
+    SX_hp = data.TAUX - zlp_filt(data.TAUX,filt_width)
+    SY_hp = data.TAUY - zlp_filt(data.TAUY,filt_width)
+
+    # Fix chunking error:
+    WX_hp = WX_hp.chunk({'x': WX_hp.sizes['x']})
+    WY_hp = WY_hp.chunk({'x': WY_hp.sizes['x']})
+    SX_hp = SX_hp.chunk({'x': SX_hp.sizes['x']})
+    SY_hp = SY_hp.chunk({'x': SY_hp.sizes['x']})
+
+    # Calculate divergence and curl:
+    Wdiv  = wrf_grid.interp(wrf_grid.derivative(WX_hp,'x'),'y')+wrf_grid.interp(wrf_grid.derivative(WY_hp,'y'),'x')
+    Wcur = wrf_grid.interp(wrf_grid.derivative(WY_hp,'x'),'y')-wrf_grid.interp(wrf_grid.derivative(WX_hp,'y'),'x')
+    Sdiv  = wrf_grid.interp(wrf_grid.derivative(SX_hp,'x'),'y')+wrf_grid.interp(wrf_grid.derivative(SY_hp,'y'),'x')
+    Scur = wrf_grid.interp(wrf_grid.derivative(SY_hp,'x'),'y')-wrf_grid.interp(wrf_grid.derivative(SX_hp,'y'),'x')
+
+    # Calculate magnitudes:
+    Wmag = np.sqrt((WX_hp)**2.+(WY_hp)**2.)
+    Smag = np.sqrt((SX_hp)**2.+(SY_hp)**2.)
+
+    # Do variance calculations:
+    Wdiv_hp_var = (Wdiv**2.).mean('time_counter').load()
+    Wcur_hp_var = (Wcur**2.).mean('time_counter').load()
+    Sdiv_hp_var = (Sdiv**2.).mean('time_counter').load()
+    Scur_hp_var = (Scur**2.).mean('time_counter').load()
+    WX_hp_var   = (WX_hp**2.).mean('time_counter').load()
+    WY_hp_var   = (WY_hp**2.).mean('time_counter').load()
+    SX_hp_var   = (SX_hp**2.).mean('time_counter').load()
+    SY_hp_var   = (SY_hp**2.).mean('time_counter').load()
+    SST_hp_var  = (SST_hp**2.).mean('time_counter').load()
+    
+    # Add metadata:
+    SST_hp_var  = SST_hp_var.assign_attrs({'long_name':'SST high-pass variance','units':'degC2'})
+    Wdiv_hp_var = Wdiv_hp_var.assign_attrs({'long_name':'high-pass wind divergence variance','units':'s-2'})
+    Wcur_hp_var = Wcur_hp_var.assign_attrs({'long_name':'high-pass wind curl variance','units':'s-2'})
+    Sdiv_hp_var = Sdiv_hp_var.assign_attrs({'long_name':'high-pass wind divergence variance','units':'N2m-6'})
+    Scur_hp_var = Scur_hp_var.assign_attrs({'long_name':'high-pass wind curl variance','units':'N2m-6'})
+    WX_hp_var   = WX_hp_var.assign_attrs({'long_name':'high-pass U-wind variance','units':'m2s-2'})
+    WY_hp_var   = WY_hp_var.assign_attrs({'long_name':'high-pass V-wind variance','units':'m2s-2'})
+    SX_hp_var   = SX_hp_var.assign_attrs({'long_name':'high-pass U-stress variance','units':'N2m-4'})
+    SY_hp_var   = SY_hp_var.assign_attrs({'long_name':'high-pass V-stress variance','units':'N2m-4'})
+
+    # Deal with time:
+    DT = xr.DataArray(data=len(data.time_counter)).assign_attrs({'Name':'Number of days in averaging period'})
+    data_mon = xr.open_dataset(file_in_mon,chunks={'time_counter':1})
+    time_counter = data_mon.time_counter.values
+
+    # Combine into a single Dataset and write out:
+    ds = xr.Dataset(data_vars={'SST_hp_var':SST_hp_var,
+                               'Wdiv_hp_var':Wdiv_hp_var,
+                               'Wcur_hp_var':Wcur_hp_var,
+                               'Sdiv_hp_var':Sdiv_hp_var,
+                               'Scur_hp_var':Scur_hp_var,
+                               'WX_hp_var':WX_hp_var,
+                               'WY_hp_var':WY_hp_var,
+                               'SX_hp_var':SX_hp_var,
+                               'SY_hp_var':SY_hp_var,
+                               'DT':DT,'time_counter':time_counter})
+    
+    # Add time_counter to variables:
+    for v in ['SST_hp_var','Wdiv_hp_var','Wcur_hp_var','Sdiv_hp_var','Scur_hp_var','WX_hp_var','WY_hp_var','SX_hp_var','SY_hp_var']:
         ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
 
     ds.encoding = {'unlimited_dims': ['time_counter']}
