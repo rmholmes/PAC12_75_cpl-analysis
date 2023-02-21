@@ -241,7 +241,7 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
 
     # surface heat flux for APE generation:
     Q_lp = zlp_filt(data.shflx,filt_width)
-    Q_hp = Qdata.shflx - Q_lp
+    Q_hp = data.shflx - Q_lp
 
     Q_hp_var = (Q_hp**2.).mean('time_counter').load()
     QSST_hp  = (Q_hp*SST_hp).mean('time_counter').load()
