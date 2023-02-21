@@ -185,8 +185,10 @@ def zlp_filt(var,width,typ='gau',cut=0.1):
 def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     """
     Calculates:
-    1) zonal-high pass filtered variances of SST, SSH and velocities
+    1) zonal-high pass filtered variances of SST, SSH, velocities and surface heat fluxes
     2) Eddy and mean wind work
+    3) Surface meridional heat flux V*SST
+    4) Eddy and mean APE generation metrics (Bishop et al. 2020)
 
     from a month of daily CROCO surface output data and saves them back into a
     netcdf file in the same folder.
@@ -200,14 +202,15 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     data = create_coords_CROCO(data)
 
     # SST:
-    SST_hp = data.temp_surf - zlp_filt(data.temp_surf,filt_width)
+    SST_lp = zlp_filt(data.temp_surf,filt_width)
+    SST_hp = data.temp_surf - SST_lp
     SST_hp_var = (SST_hp**2.).mean('time_counter').load()
 
     # SSH:
     SSH_hp = data.zeta - zlp_filt(data.zeta,filt_width)
     SSH_hp_var = (SSH_hp**2.).mean('time_counter').load()
 
-    # # U, EWWU, MWWU:
+    # U, EWWU, MWWU:
     U_lp    = zlp_filt(data.u_surf,filt_width)
     U_hp    = data.u_surf - U_lp
     TAUX_lp = zlp_filt(data.sustr,filt_width)
@@ -233,22 +236,33 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
 
     # V_hp*SST_hp for TIW meridional heat flux:
     grid = Grid(data,coords={"y":{"center":"y_rho","inner":"y_v"},"x":{"center":"x_rho","inner":"x_u"}},periodic=False)
-    VSST = (grid.interp(V_hp,'y').rename({'x_v':'x_rho'})*SST_hp).mean('time_counter').load()
-#    USST = (grid.interp(U_hp,'x').rename({'y_u':'y_rho'})*SST_hp).mean('time_counter').load() # This is not working because of some chunking error?
-    
+    VSST_hp = (grid.interp(V_hp,'y').rename({'x_v':'x_rho'})*SST_hp).mean('time_counter').load()
+#    USST_hp = (grid.interp(U_hp,'x').rename({'y_u':'y_rho'})*SST_hp).mean('time_counter').load() # This is not working because of some chunking error?
+
+    # surface heat flux for APE generation:
+    Q_lp = zlp_filt(data.shflx,filt_width)
+    Q_hp = Qdata.shflx - Q_lp
+
+    Q_hp_var = (Q_hp**2.).mean('time_counter').load()
+    QSST_hp  = (Q_hp*SST_hp).mean('time_counter').load()
+    QSST_lp  = (Q_lp*SST_lp).mean('time_counter').load()
+
     # Add metadata:
-    SST_hp_var = SST_hp_var.assign_attrs({'Name':'SST high-pass variance'})
-    SSH_hp_var = SSH_hp_var.assign_attrs({'Name':'SSH high-pass variance'})
-    U_hp_var = U_hp_var.assign_attrs({'Name':'U high-pass variance'})
-    V_hp_var = V_hp_var.assign_attrs({'Name':'V high-pass variance'})
-    U_lp_var = U_lp_var.assign_attrs({'Name':'U low-pass variance'})
-    V_lp_var = V_lp_var.assign_attrs({'Name':'V low-pass variance'})
-    EWWU = EWWU.assign_attrs({'Name':'U eddy wind-work'})
-    MWWU = MWWU.assign_attrs({'Name':'U mean wind-work'})
-    EWWV = EWWV.assign_attrs({'Name':'V eddy wind-work'})
-    MWWV = MWWV.assign_attrs({'Name':'V mean wind-work'})
-    VSST = VSST.assign_attrs({'Name':'V high-pass * SST high-pass mean'})
-#    USST = USST.assign_attrs({'Name':'U high-pass * SST high-pass mean'})
+    SST_hp_var = SST_hp_var.assign_attrs({'long_name':'SST high-pass variance','units':'degC^2'})
+    SSH_hp_var = SSH_hp_var.assign_attrs({'long_name':'SSH high-pass variance','units':'m2'})
+    U_hp_var = U_hp_var.assign_attrs({'long_name':'U high-pass variance','units':'m2s-2'})
+    V_hp_var = V_hp_var.assign_attrs({'long_name':'V high-pass variance','units':'m2s-2'})
+    U_lp_var = U_lp_var.assign_attrs({'long_name':'U low-pass variance','units':'m2s-2'})
+    V_lp_var = V_lp_var.assign_attrs({'long_name':'V low-pass variance','units':'m2s-2'})
+    EWWU = EWWU.assign_attrs({'long_name':'U eddy wind-work','units':'Nm-1s-1'})
+    MWWU = MWWU.assign_attrs({'long_name':'U mean wind-work','units':'Nm-1s-1'})
+    EWWV = EWWV.assign_attrs({'long_name':'V eddy wind-work','units':'Nm-1s-1'})
+    MWWV = MWWV.assign_attrs({'long_name':'V mean wind-work','units':'Nm-1s-1'})
+    VSST_hp = VSST_hp.assign_attrs({'long_name':'V high-pass * SST high-pass mean','units':'degCms-1'})
+    Q_hp_var = Q_hp_var.assign_attrs({'long_name':'Q high-pass variance','units':'W2m-4'})
+    QSST_hp = QSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean','units':'WdegCm-2'})
+    QSST_lp = QSST_lp.assign_attrs({'long_name':'Q low-pass * SST low-pass mean','units':'WdegC2m-2'})
+#    USST = USST.assign_attrs({'long_name':'U high-pass * SST high-pass mean'})
 
     # Deal with time:
     DT = xr.DataArray(data=len(data.time_counter)).assign_attrs({'Name':'Number of days in averaging period'})
@@ -258,11 +272,12 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     # Combine into a single Dataset and write out:
     ds = xr.Dataset(data_vars={'SSH_hp_var':SSH_hp_var,'SST_hp_var':SST_hp_var,
                   'U_hp_var':U_hp_var,'V_hp_var':V_hp_var,'U_lp_var':U_lp_var,'V_lp_var':V_lp_var,
-                  'EWWU':EWWU,'MWWU':MWWU,'EWWV':EWWV,'MWWV':MWWV,'VSST':VSST,#'USST':USST,
+                  'EWWU':EWWU,'MWWU':MWWU,'EWWV':EWWV,'MWWV':MWWV,'VSST_hp':VSST_hp,#'USST':USST,
+                  'Q_hp_var':Q_hp_var,'QSST_hp':QSST_hp,'QSST_lp':QSST_lp,
                   'DT':DT,'time_counter':time_counter})
     
     # Add time_counter to variables:
-    for v in ['SSH_hp_var','SST_hp_var','U_hp_var','U_lp_var','V_hp_var','V_lp_var','EWWU','MWWU','EWWV','MWWV','VSST','DT']: #'USST'
+    for v in ['SSH_hp_var','SST_hp_var','U_hp_var','U_lp_var','V_hp_var','V_lp_var','EWWU','MWWU','EWWV','MWWV','VSST_hp','Q_hp_var','QSST_hp','QSST_lp','DT']: #'USST'
         ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
 
     ds.encoding = {'unlimited_dims': ['time_counter']}

@@ -110,7 +110,7 @@
 
 !# include "R_tools_fort_routines/get_ghat.F"
 
-!# include "R_tools_fort_routines/alfabeta.F"
+# include "R_tools_fort_routines/alfabeta.F"
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !! Tracer evolution
