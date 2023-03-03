@@ -283,6 +283,61 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     ds.encoding = {'unlimited_dims': ['time_counter']}
     ds.to_netcdf(file_out)
 
+def calc_zhp_std_variables_CROCOonly(file_in_day,file_in_6mon,file_out,filt_width):
+    """
+    Calculates:
+    1) zonal-high pass filtered variances of SST and velocities
+
+    from six-months of daily CROCO surface output data and saves them back into a
+    netcdf file in the same folder.
+
+    file_in_day = netcdf file of daily CROCO surface output data  (croco_out_day.nc)
+    file_out = filename to use for output file.
+    filt_width = filter window width in degrees (see zlp_filt function above).
+    """
+
+    data = xr.open_dataset(file_in_day,chunks={'time_counter':1})
+    data = create_coords_CROCO(data)
+
+    # SST:
+    SST_lp = zlp_filt(data.temp_surf,filt_width)
+    SST_hp = data.temp_surf - SST_lp
+    SST_hp_var = (SST_hp**2.).resample(time_counter='M').mean().load()
+
+    # SSH:
+    SSH_hp = data.zeta - zlp_filt(data.zeta,filt_width)
+    SSH_hp_var = (SSH_hp**2.).resample(time_counter='M').mean().load()
+
+    # U:
+    U_lp    = zlp_filt(data.u_surf,filt_width)
+    U_hp    = data.u_surf - U_lp
+
+    U_hp_var = (U_hp**2.).resample(time_counter='M').mean().load()
+    U_lp_var = (U_lp**2.).resample(time_counter='M').mean().load()
+
+    # V:
+    V_lp    = zlp_filt(data.v_surf,filt_width)
+    V_hp    = data.v_surf - V_lp
+
+    V_hp_var = (V_hp**2.).resample(time_counter='M').mean().load()
+    V_lp_var = (V_lp**2.).resample(time_counter='M').mean().load() # Not sure about this one...
+
+    # Add metadata:
+    SST_hp_var = SST_hp_var.assign_attrs({'long_name':'SST high-pass variance','units':'degC^2'})
+    SSH_hp_var = SSH_hp_var.assign_attrs({'long_name':'SSH high-pass variance','units':'m2'})
+    U_hp_var = U_hp_var.assign_attrs({'long_name':'U high-pass variance','units':'m2s-2'})
+    V_hp_var = V_hp_var.assign_attrs({'long_name':'V high-pass variance','units':'m2s-2'})
+    U_lp_var = U_lp_var.assign_attrs({'long_name':'U low-pass variance','units':'m2s-2'})
+    V_lp_var = V_lp_var.assign_attrs({'long_name':'V low-pass variance','units':'m2s-2'})
+
+    # time_counter = SST_hp_var.time_counter
+    # Combine into a single Dataset and write out:
+    ds = xr.Dataset(data_vars={'SSH_hp_var':SSH_hp_var,'SST_hp_var':SST_hp_var,
+                  'U_hp_var':U_hp_var,'V_hp_var':V_hp_var,'U_lp_var':U_lp_var,'V_lp_var':V_lp_var})
+    
+    ds.encoding = {'unlimited_dims': ['time_counter']}
+    ds.to_netcdf(file_out)
+
 def calc_zhp_3d_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,file_out,filt_width):
     """
     Calculates eddy correlation variables from 3D daily output in the
