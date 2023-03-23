@@ -4,7 +4,12 @@ import numpy as np
 import sys, os, glob
 
 # Import Lisa's fortran codes:
+sys.path.append(os.path.join(os.path.dirname(__file__), 'Tracer_balance_code_LMaillard_v2/'))
 import R_tools_fort as toolsF
+
+# Import pyCOARE-master:
+sys.path.append(os.path.join(os.path.dirname(__file__), 'pyCOARE-master/'))
+import coare35vn, meteo
 
 # General tools:
 # ---------------------------------------------------------
@@ -50,7 +55,32 @@ def create_coords_WRF(ds):
     
     ds["x"] = ds.nav_lon.isel(y=0)
     ds["y"] = ds.nav_lat.isel(x=0)
-    ds.set_coords({'x','y'})
+    ds = ds.set_coords({'x','y'})
+    return(ds)
+
+def create_coords_WRF4d(ds):
+    """
+    Creates 1D coordinates from 2D coordinates assuming mercator in
+    EPAC WRF 4d data. Deal with longitude cyclicity.
+    """
+
+    ds["nav_lon_grid_U"] = ds.nav_lon_grid_U.where(ds.nav_lon_grid_U>0.,ds.nav_lon_grid_U+360.)
+    ds["nav_lon_grid_V"] = ds.nav_lon_grid_V.where(ds.nav_lon_grid_V>0.,ds.nav_lon_grid_V+360.)
+    ds["nav_lon_grid_M"] = ds.nav_lon_grid_M.where(ds.nav_lon_grid_M>0.,ds.nav_lon_grid_M+360.)
+    
+    ds["x_grid_V"] = ds.nav_lon_grid_V.isel(y_grid_V=0)
+    ds["y_grid_V"] = ds.nav_lat_grid_V.isel(x_grid_V=0)
+    ds["x_grid_U"] = ds.nav_lon_grid_U.isel(y_grid_U=0)
+    ds["y_grid_U"] = ds.nav_lat_grid_U.isel(x_grid_U=0)
+    ds["x_grid_M"] = ds.nav_lon_grid_M.isel(y_grid_M=0)
+    ds["y_grid_M"] = ds.nav_lat_grid_M.isel(x_grid_M=0)
+
+    # Estimate of vertical distance coordinate in km (won't work over land I
+    # don't think):
+    Z = ds.PHB.isel(x_grid_M=0,y_grid_M=0).values/9.81/1000.
+    ds["Z"] = xr.zeros_like(ds.lev_M)
+    ds["Z"].data = (Z[1:]+Z[0:-1])/2.
+    ds = ds.set_coords({'x_grid_V','y_grid_V','x_grid_U','y_grid_U','x_grid_M','y_grid_M','Z'})
     return(ds)
 
 def create_coords_CROCO_TIW(ds,ds_grd):
@@ -131,6 +161,54 @@ def create_WRF_xgcm(ds):
                                "y":{"center":"y","inner":"y_v"}},periodic=False,metrics=metrics)
 
     return(wrf_grid)
+
+def coare_tflux(obj,SST,skintemp=True):
+    """ A wrapper around coare35vn that takes a wrf daily output file and an SST input
+        and returns the turbulent heat fluxes calculated using the coare35vn routine 
+        Note: 
+        if skintemp=True then SST should be skin temp (this is more accurate)
+        if skintemp=False then SST is not skin temp
+        """
+    
+    # Input unit conversions and shapes:
+    K_to_C = -273.15
+    u = obj.WSPD_REL
+    sz = u.shape
+    if len(sz)==3:
+        lat = np.transpose(np.repeat(obj.nav_lat.values[:,:,np.newaxis],sz[0],axis=2),(2,0,1))
+    else:
+        lat = obj.nav_lat.values
+    shp = -1
+    lat = lat.reshape(shp)
+    u = u.values.reshape(shp)
+    t = (obj.T_PHYL1+K_to_C).values.reshape(shp)
+    q = obj.QVL1.values.reshape(shp)
+    p = (obj.PSFC/100.).values.reshape(shp) # PSFC is in Pa, p is in mbar.
+    
+    ts = (SST+K_to_C).values.reshape(shp)
+    if skintemp:
+        jcool=0
+    else:
+        jcool=1
+
+    rh = (meteo.rhcalc(t,p,q)).reshape(shp)
+    zi = obj.PBLH.values.reshape(shp) # This makes very little difference compared to default, slightly better with it included.
+    
+    # These make no difference, remove:
+    # Rs = obj.GSW.values.reshape(shp)
+    # Rl = obj.GLW.values.reshape(shp) 
+    # rain = obj.RAIN.values.reshape(shp) # This appears to make no difference. Removed.
+    
+    # Call function:
+    A = coare35vn.coare35vn(u, t, rh, ts, P=p,zu=10.,zt = 10.,zq=10.,lat=lat,jcool=jcool,zi=zi)
+    
+    # Outputs:
+    HFX = xr.zeros_like(obj.HFX)
+    LH = xr.zeros_like(obj.LH)
+    HFX.data = A[:,2].reshape(sz)
+    LH.data = A[:,3].reshape(sz)
+    
+    return(HFX,LH)
 
 def TIWt(ds):
     """
@@ -630,6 +708,9 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     SX_hp = data.TAUX - zlp_filt(data.TAUX,filt_width)
     SY_hp = data.TAUY - zlp_filt(data.TAUY,filt_width)
 
+    # Surface heat fluxes:
+    
+
     # Fix chunking error:
     WX_hp = WX_hp.chunk({'x': WX_hp.sizes['x']})
     WY_hp = WY_hp.chunk({'x': WY_hp.sizes['x']})
@@ -693,7 +774,7 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     ds.to_netcdf(file_out)
 
 # # Old stuff
-# # ----------------------------------------------------------------------------------------------------------
+                                    # # ----------------------------------------------------------------------------------------------------------
 
 # # Define a function to calculate depths (python script adapted from croco_tools/Preprocessing_tools/zlevs.m):
 
