@@ -698,7 +698,12 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     wrf_grid = create_WRF_xgcm(data)
 
     # SST:
-    SST_hp = data.SST - zlp_filt(data.SST,filt_width)
+    SST_lp = zlp_filt(data.SST,filt_width)
+    SST_hp = data.SST - SST_lp
+
+    # Skin temperature:
+    TSK_lp = zlp_filt(data.TSK,filt_width)
+    TSK_hp = data.TSK - TSK_lp
 
     # Surface winds:
     WX_hp = data.U_PHYL1 - zlp_filt(data.U_PHYL1,filt_width)
@@ -708,8 +713,41 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     SX_hp = data.TAUX - zlp_filt(data.TAUX,filt_width)
     SY_hp = data.TAUY - zlp_filt(data.TAUY,filt_width)
 
-    # Surface heat fluxes:
-    
+    # Sensible and latent heat fluxes (various versions):
+    HFX_lp = zlp_filt(data.HFX,filt_width)
+    HFX_hp = data.HFX - HFX_lp
+    LH_lp = zlp_filt(data.LH,filt_width)
+    LH_hp = data.LH - LH_lp
+
+    HFXof, LHof = coare_tflux(data,data.TSK,skintemp=True)
+    HFXof_lp = zlp_filt(HFXof,filt_width)
+    HFXof_hp = HFXof - HFXof_lp
+    LHof_lp = zlp_filt(LHof,filt_width)
+    LHof_hp = LHof - LHof_lp
+
+    HFXofsmt, LHofsmt = coare_tflux(data,TSK_lp.fillna(273.15),skintemp=True)
+    HFXofsmt_lp = zlp_filt(HFXofsmt,filt_width)
+    HFXofsmt_hp = HFXofsmt - HFXofsmt_lp
+    LHofsmt_lp = zlp_filt(LHofsmt,filt_width)
+    LHofsmt_hp = LHofsmt - LHofsmt_lp
+
+    # Longwave flux:
+    LW = data.GLW-5.67e-8*(data.TSK)**4
+    LW_lp = zlp_filt(LW,filt_width)
+    LW_hp = LW - LW_lp
+
+    LWsmt = data.GLW-5.67e-8*(TSK_lp)**4
+    LWsmt_lp = zlp_filt(LWsmt,filt_width)
+    LWsmt_hp = LWsmt - LWsmt_lp
+
+    # Shortwave flux (this is net):
+    SW_lp = zlp_filt(data.GSW,filt_width)
+    SW_hp = data.GSW - SW_lp
+
+    # Net fluxes:
+    Q_hp = HFX_hp+LH_hp+LW_hp+SW_hp
+    Qof_hp = HFXof_hp+LHof_hp+LW_hp+SW_hp
+    Qofsmt_hp = HFXofsmt_hp+LHofsmt_hp+LWsmt_hp+SW_hp
 
     # Fix chunking error:
     WX_hp = WX_hp.chunk({'x': WX_hp.sizes['x']})
@@ -737,7 +775,15 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     SX_hp_var   = (SX_hp**2.).mean('time_counter').load()
     SY_hp_var   = (SY_hp**2.).mean('time_counter').load()
     SST_hp_var  = (SST_hp**2.).mean('time_counter').load()
-    
+        
+    # Ge and Gm terms:
+    Q_hp_var = (Q_hp**2.).mean('time_counter').load()
+    QSST_hp  = (Q_hp*SST_hp).mean('time_counter').load()
+    Qof_hp_var = (Qof_hp**2.).mean('time_counter').load()
+    QofSST_hp  = (Qof_hp*SST_hp).mean('time_counter').load()
+    Qofsmt_hp_var = (Qofsmt_hp**2.).mean('time_counter').load()
+    QofsmtSST_hp  = (Qofsmt_hp*SST_hp).mean('time_counter').load()
+
     # Add metadata:
     SST_hp_var  = SST_hp_var.assign_attrs({'long_name':'SST high-pass variance','units':'degC2'})
     Wdiv_hp_var = Wdiv_hp_var.assign_attrs({'long_name':'high-pass wind divergence variance','units':'s-2'})
@@ -748,6 +794,12 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     WY_hp_var   = WY_hp_var.assign_attrs({'long_name':'high-pass V-wind variance','units':'m2s-2'})
     SX_hp_var   = SX_hp_var.assign_attrs({'long_name':'high-pass U-stress variance','units':'N2m-4'})
     SY_hp_var   = SY_hp_var.assign_attrs({'long_name':'high-pass V-stress variance','units':'N2m-4'})
+    Q_hp_var    = Q_hp_var.assign_attrs({'long_name':'Q high-pass variance','units':'W2m-4'})
+    QSST_hp     = QSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean','units':'WdegCm-2'})
+    Qof_hp_var  = Qof_hp_var.assign_attrs({'long_name':'Q high-pass variance - offline tfluxes','units':'W2m-4'})
+    QofSST_hp   = QofSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean - offline tfluxes','units':'WdegCm-2'})
+    Qofsmt_hp_var = Qofsmt_hp_var.assign_attrs({'long_name':'Q high-pass variance - offline tfluxes, smoothed skin temp','units':'W2m-4'})
+    QofsmtSST_hp  = QofsmtSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean - offline tfluxes, smoothed skin temp','units':'WdegCm-2'})
 
     # Deal with time:
     DT = xr.DataArray(data=len(data.time_counter)).assign_attrs({'Name':'Number of days in averaging period'})
@@ -764,10 +816,17 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
                                'WY_hp_var':WY_hp_var,
                                'SX_hp_var':SX_hp_var,
                                'SY_hp_var':SY_hp_var,
+                               'Q_hp_var':Q_hp_var,
+                               'QSST_hp':QSST_hp,
+                               'Qof_hp_var':Qof_hp_var,
+                               'QofSST_hp':QofSST_hp,
+                               'Qofsmt_hp_var':Qofsmt_hp_var,
+                               'QofsmtSST_hp':QofsmtSST_hp,
                                'DT':DT,'time_counter':time_counter})
     
     # Add time_counter to variables:
-    for v in ['SST_hp_var','Wdiv_hp_var','Wcur_hp_var','Sdiv_hp_var','Scur_hp_var','WX_hp_var','WY_hp_var','SX_hp_var','SY_hp_var']:
+    for v in ['SST_hp_var','Wdiv_hp_var','Wcur_hp_var','Sdiv_hp_var','Scur_hp_var','WX_hp_var','WY_hp_var','SX_hp_var','SY_hp_var',
+              'Q_hp_var','QSST_hp','Qof_hp_var','QofSST_hp','Qofsmt_hp_var','QofsmtSST_hp']:
         ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
 
     ds.encoding = {'unlimited_dims': ['time_counter']}
