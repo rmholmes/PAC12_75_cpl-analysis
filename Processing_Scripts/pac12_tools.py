@@ -162,7 +162,7 @@ def create_WRF_xgcm(ds):
 
     return(wrf_grid)
 
-def coare_tflux(obj,SST,skintemp=True):
+def coare_tflux(obj,SST,TAIR,QAIR,WSPD,skintemp=True):
     """ A wrapper around coare35vn that takes a wrf daily output file and an SST input
         and returns the turbulent heat fluxes calculated using the coare35vn routine 
         Note: 
@@ -172,7 +172,7 @@ def coare_tflux(obj,SST,skintemp=True):
     
     # Input unit conversions and shapes:
     K_to_C = -273.15
-    u = obj.WSPD_REL
+    u = WSPD
     sz = u.shape
     if len(sz)==3:
         lat = np.transpose(np.repeat(obj.nav_lat.values[:,:,np.newaxis],sz[0],axis=2),(2,0,1))
@@ -181,10 +181,9 @@ def coare_tflux(obj,SST,skintemp=True):
     shp = -1
     lat = lat.reshape(shp)
     u = u.values.reshape(shp)
-    t = (obj.T_PHYL1+K_to_C).values.reshape(shp)
-    q = obj.QVL1.values.reshape(shp)
+    t = (TAIR+K_to_C).values.reshape(shp)
+    q = QAIR.values.reshape(shp)
     p = (obj.PSFC/100.).values.reshape(shp) # PSFC is in Pa, p is in mbar.
-    
     ts = (SST+K_to_C).values.reshape(shp)
     if skintemp:
         jcool=0
@@ -719,17 +718,31 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     LH_lp = zlp_filt(data.LH,filt_width)
     LH_hp = data.LH - LH_lp
 
-    HFXof, LHof = coare_tflux(data,data.TSK,skintemp=True)
+    HFXof, LHof = coare_tflux(data,data.TSK,data.T_PHYL1,data.QVL1,data.WSPD_REL,skintemp=True)
     HFXof_lp = zlp_filt(HFXof,filt_width)
     HFXof_hp = HFXof - HFXof_lp
     LHof_lp = zlp_filt(LHof,filt_width)
     LHof_hp = LHof - LHof_lp
 
-    HFXofsmt, LHofsmt = coare_tflux(data,TSK_lp.fillna(273.15),skintemp=True)
+    HFXofabw, LHofabw = coare_tflux(data,data.TSK,data.T_PHYL1,data.QVL1,data.WSPD,skintemp=True)
+    HFXofabw_lp = zlp_filt(HFXofabw,filt_width)
+    HFXofabw_hp = HFXofabw - HFXofabw_lp
+    LHofabw_lp = zlp_filt(LHofabw,filt_width)
+    LHofabw_hp = LHofabw - LHofabw_lp
+
+    HFXofsmt, LHofsmt = coare_tflux(data,TSK_lp.fillna(273.15),data.T_PHYL1,data.QVL1,data.WSPD_REL,skintemp=True)
     HFXofsmt_lp = zlp_filt(HFXofsmt,filt_width)
     HFXofsmt_hp = HFXofsmt - HFXofsmt_lp
     LHofsmt_lp = zlp_filt(LHofsmt,filt_width)
     LHofsmt_hp = LHofsmt - LHofsmt_lp
+
+    TAIR_lp = zlp_filt(data.T_PHYL1,filt_width)
+    QAIR_lp = zlp_filt(data.QVL1,filt_width)
+    HFXofsmtew, LHofsmtew = coare_tflux(data,TSK_lp.fillna(273.15),TAIR_lp.fillna(273.15),QAIR_lp.fillna(0.),data.WSPD_REL,skintemp=True)
+    HFXofsmtew_lp = zlp_filt(HFXofsmtew,filt_width)
+    HFXofsmtew_hp = HFXofsmtew - HFXofsmtew_lp
+    LHofsmtew_lp = zlp_filt(LHofsmtew,filt_width)
+    LHofsmtew_hp = LHofsmtew - LHofsmtew_lp
 
     # Longwave flux:
     LW = data.GLW-5.67e-8*(data.TSK)**4
@@ -747,7 +760,9 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     # Net fluxes:
     Q_hp = HFX_hp+LH_hp+LW_hp+SW_hp
     Qof_hp = HFXof_hp+LHof_hp+LW_hp+SW_hp
+    Qofabw_hp = HFXofabw_hp+LHofabw_hp+LW_hp+SW_hp
     Qofsmt_hp = HFXofsmt_hp+LHofsmt_hp+LWsmt_hp+SW_hp
+    Qofsmtew_hp = HFXofsmtew_hp+LHofsmtew_hp+LWsmt_hp+SW_hp
 
     # Fix chunking error:
     WX_hp = WX_hp.chunk({'x': WX_hp.sizes['x']})
@@ -783,6 +798,10 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     QofSST_hp  = (Qof_hp*SST_hp).mean('time_counter').load()
     Qofsmt_hp_var = (Qofsmt_hp**2.).mean('time_counter').load()
     QofsmtSST_hp  = (Qofsmt_hp*SST_hp).mean('time_counter').load()
+    Qofsmtew_hp_var = (Qofsmtew_hp**2.).mean('time_counter').load()
+    QofsmtewSST_hp  = (Qofsmtew_hp*SST_hp).mean('time_counter').load()
+    Qofabw_hp_var = (Qofabw_hp**2.).mean('time_counter').load()
+    QofabwSST_hp  = (Qofabw_hp*SST_hp).mean('time_counter').load()
 
     # Add metadata:
     SST_hp_var  = SST_hp_var.assign_attrs({'long_name':'SST high-pass variance','units':'degC2'})
@@ -800,6 +819,10 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
     QofSST_hp   = QofSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean - offline tfluxes','units':'WdegCm-2'})
     Qofsmt_hp_var = Qofsmt_hp_var.assign_attrs({'long_name':'Q high-pass variance - offline tfluxes, smoothed skin temp','units':'W2m-4'})
     QofsmtSST_hp  = QofsmtSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean - offline tfluxes, smoothed skin temp','units':'WdegCm-2'})
+    Qofsmtew_hp_var = Qofsmtew_hp_var.assign_attrs({'long_name':'Q high-pass variance - offline tfluxes, smoothed skin temp, TAIR, QAIR','units':'W2m-4'})
+    QofsmtewSST_hp  = QofsmtewSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean - offline tfluxes, smoothed skin temp, TAIR, QAIR','units':'WdegCm-2'})
+    Qofabw_hp_var  = Qofabw_hp_var.assign_attrs({'long_name':'Q high-pass variance - offline tfluxes, absolute wind','units':'W2m-4'})
+    QofabwSST_hp   = QofabwSST_hp.assign_attrs({'long_name':'Q high-pass * SST high-pass mean - offline tfluxes, absolute wind','units':'WdegCm-2'})
 
     # Deal with time:
     DT = xr.DataArray(data=len(data.time_counter)).assign_attrs({'Name':'Number of days in averaging period'})
@@ -822,11 +845,15 @@ def calc_zhp_wrf_variables(file_in_day,file_in_mon,file_out,filt_width):
                                'QofSST_hp':QofSST_hp,
                                'Qofsmt_hp_var':Qofsmt_hp_var,
                                'QofsmtSST_hp':QofsmtSST_hp,
+                               'Qofsmtew_hp_var':Qofsmtew_hp_var,
+                               'QofsmtewSST_hp':QofsmtewSST_hp,
+                               'Qofabw_hp_var':Qofabw_hp_var,
+                               'QofabwSST_hp':QofabwSST_hp,
                                'DT':DT,'time_counter':time_counter})
     
     # Add time_counter to variables:
     for v in ['SST_hp_var','Wdiv_hp_var','Wcur_hp_var','Sdiv_hp_var','Scur_hp_var','WX_hp_var','WY_hp_var','SX_hp_var','SY_hp_var',
-              'Q_hp_var','QSST_hp','Qof_hp_var','QofSST_hp','Qofsmt_hp_var','QofsmtSST_hp']:
+              'Q_hp_var','QSST_hp','Qof_hp_var','QofSST_hp','Qofsmt_hp_var','QofsmtSST_hp','Qofsmtew_hp_var','QofsmtewSST_hp','Qofabw_hp_var','QofabwSST_hp']:
         ds[v] = ds[v].expand_dims(dim={'time_counter':ds.time_counter})
 
     ds.encoding = {'unlimited_dims': ['time_counter']}

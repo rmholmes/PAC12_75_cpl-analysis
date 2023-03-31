@@ -17,8 +17,8 @@ if __name__ == "__main__":
     file_in_dayTIW = file_in_day[:-6] + 'day_TIW.nc'
     file_in_mon = file_in_day[:-6] + 'mon.nc'
     file_in_grd = file_in_day[:-6] + 'grd.nc'
-    file_out = file_in_day[:-6] + 'mon_TIWhpstd.nc'
+    file_out = file_in_day[:-6] + 'mon_TIWhp.nc'
 
     sys.stdout.write(file_in_dayTIW + ' to ' + file_out + '\n');sys.stdout.flush();
-    ptools.calc_zhp_3dstd_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,file_out,filt_width)
+    ptools.calc_zhp_3d_variables(file_in_dayTIW,file_in_day,file_in_mon,file_in_grd,file_out,filt_width)
 
