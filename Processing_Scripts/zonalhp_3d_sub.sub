@@ -7,7 +7,6 @@
 #PBS -l wd
 #PBS -l storage=gdata/hh5+gdata/e14
 #PBS -q normal
-#PBS -m e
 
 PYTHONPATH=$PYTHONPATH:/g/data/e14/rmh561/croco/analysis/PAC12_75_cpl/Processing_Scripts/Tracer_balance_code_LMaillard_v2
 

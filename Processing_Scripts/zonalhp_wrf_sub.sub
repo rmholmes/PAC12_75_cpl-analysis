@@ -7,8 +7,6 @@
 #PBS -l wd
 #PBS -l storage=gdata/hh5+gdata/e14
 #PBS -q express
-#PBS -M r.holmes@sydney.edu.au
-#PBS -m e
 
 module use /g/data3/hh5/public/modules
 module load conda/analysis3
