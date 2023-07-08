@@ -1,0 +1,7 @@
+#!/bin/bash
+
+for f in exp*
+do
+qsub fscripts/Process_exp${f:3:2}_${f:6:4}
+done
+
