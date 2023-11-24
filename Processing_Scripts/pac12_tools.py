@@ -219,7 +219,7 @@ def TIWt(ds):
 # Zonal filtering tools:
 # ---------------------------------------------------------
 
-def zlp_filt(var,width,typ='gau',cut=0.1):
+def zlp_filt(var,width,typ='gau',cut=0.1,half_filt=True):
     # Calculate zonal filtered version of a variable using either:
     #
     # typ='box': a simple boxcar moving average with width of width in
@@ -228,6 +228,9 @@ def zlp_filt(var,width,typ='gau',cut=0.1):
     # typ='gau': a Gaussian filter of standard deviation width (in
     # degrees). Keep only values greater than cut in relative
     # size. This function reproduces the SST filtering used in OASIS.
+    #
+    # half_filt = True means only available points are used to avoid 
+    # yielding NaNs within a filter width of land.
 
     dims = var.dims
     inds = [index for index,item in enumerate(dims) if item.startswith('x')]
@@ -250,9 +253,26 @@ def zlp_filt(var,width,typ='gau',cut=0.1):
         ww = ww.ravel()[keepww.astype('int')]
         ww = ww/ww.sum()
         
+        # one-dimensional weight function:
         weight = xr.DataArray(ww.ravel(), dims=['window'])
 
-        return(var.rolling({x:nnok},center=True).construct('window').dot(weight))
+        if half_filt:
+
+            # Rolling expansion of variable:
+            var_rolled = var.rolling({x:nnok},center=True).construct('window')
+
+            # Masked, broadcast weights:
+            (tmp,weight_bc) = xr.broadcast(var,weight)
+            weight_bc = weight_bc.where(~np.isnan(var_rolled))
+            weight_bc = weight_bc/weight_bc.sum('window')
+
+            # Smooth and re-mask variable:
+            var_smoothed = (var_rolled*weight_bc).sum('window')
+            var_smoothed = var_smoothed.where(~np.isnan(var))
+        else:
+            var_smoothed = var.rolling({x:nnok},center=True).construct('window').dot(weight)
+
+        return(var_smoothed)
         
     elif (typ == 'box'): # Boxcar filter
         return(var.rolling({x:int(width/dx)},center=True).mean())
