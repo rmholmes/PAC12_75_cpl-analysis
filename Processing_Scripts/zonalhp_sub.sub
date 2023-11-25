@@ -1,9 +1,9 @@
 #!/bin/bash
-#PBS -N XXEXPXX-XXYRXX
+#PBS -N XXEXPXX-XXYRXX-XXMNXX
 #PBS -P au06
 #PBS -l ncpus=1
-#PBS -l mem=2GB
-#PBS -l walltime=01:00:00
+#PBS -l mem=12GB
+#PBS -l walltime=00:30:00
 #PBS -l wd
 #PBS -l storage=gdata/hh5+gdata/e14
 #PBS -q express
@@ -11,4 +11,4 @@
 module use /g/data3/hh5/public/modules
 module load conda/analysis3
 
-python3 zonalhp_job.py /g/data/e14/rmh561/croco/archive/PAC12_75_cpl/PAC12_75_cpl_XXEXPXX/ XXYRXX
+python3 zonalhp_job.py /g/data/e14/rmh561/croco/archive/PAC12_75_cpl/PAC12_75_cpl_XXEXPXX/ XXYRXX XXMNXX

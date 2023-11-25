@@ -2,8 +2,8 @@
 #PBS -N XXEXPXX-XXYRXX-XXMNXX
 #PBS -P au06
 #PBS -l ncpus=1
-#PBS -l mem=12GB
-#PBS -l walltime=02:00:00
+#PBS -l mem=32GB
+#PBS -l walltime=05:00:00
 #PBS -l wd
 #PBS -l storage=gdata/hh5+gdata/e14
 #PBS -q normal

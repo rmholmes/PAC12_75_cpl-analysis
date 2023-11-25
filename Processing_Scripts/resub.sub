@@ -1,7 +1,12 @@
 #!/bin/bash
 
-for f in exp*
+files="exp*.e*"
+for f in $files
 do
-qsub fscripts/Process_exp${f:3:2}_${f:6:4}
+    if [ -s $f ]; then
+        qsub fscripts/Process_exp${f:3:2}_${f:6:4}_${f:11:2}
+        out=fscripts/Process_exp${f:3:2}_${f:6:4}_${f:11:2}
+        echo $out
+    fi  
 done
 

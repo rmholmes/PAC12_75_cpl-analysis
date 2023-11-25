@@ -315,11 +315,13 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     data = create_coords_CROCO(data)
 
     # SST:
+    print('Doing SST')
     SST_lp = zlp_filt(data.temp_surf,filt_width)
     SST_hp = data.temp_surf - SST_lp
     SST_hp_var = (SST_hp**2.).mean('time_counter').load()
 
     # SSH:
+    print('Doing SSH')
     SSH_hp = data.zeta - zlp_filt(data.zeta,filt_width)
     SSH_hp_var = (SSH_hp**2.).mean('time_counter').load()
 
@@ -329,9 +331,11 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     TAUX_lp = zlp_filt(data.sustr,filt_width)
     TAUX_hp = data.sustr - TAUX_lp
 
+    print('Doing U')
     U_hp_var = (U_hp**2.).mean('time_counter').load()
     U_lp_var = (U_lp**2.).mean('time_counter').load()
 
+    print('Doing EWWU')
     EWWU = (U_hp*TAUX_hp).mean('time_counter').load()
     MWWU = (U_lp*TAUX_lp).mean('time_counter').load()
 
@@ -341,13 +345,16 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     TAUY_lp = zlp_filt(data.svstr,filt_width)
     TAUY_hp = data.svstr - TAUY_lp
 
+    print('Doing V')
     V_hp_var = (V_hp**2.).mean('time_counter').load()
     V_lp_var = (V_lp**2.).mean('time_counter').load() # Not sure about this one...
 
+    print('Doing EWWV')
     EWWV = (V_hp*TAUY_hp).mean('time_counter').load()
     MWWV = (V_lp*TAUY_lp).mean('time_counter').load()
 
     # V_hp*SST_hp for TIW meridional heat flux:
+    print('Doing VSST')
     grid = Grid(data,coords={"y":{"center":"y_rho","inner":"y_v"},"x":{"center":"x_rho","inner":"x_u"}},periodic=False)
     VSST_hp = (grid.interp(V_hp,'y').rename({'x_v':'x_rho'})*SST_hp).mean('time_counter').load()
 #    USST_hp = (grid.interp(U_hp,'x').rename({'y_u':'y_rho'})*SST_hp).mean('time_counter').load() # This is not working because of some chunking error?
@@ -356,6 +363,7 @@ def calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width):
     Q_lp = zlp_filt(data.shflx,filt_width)
     Q_hp = data.shflx - Q_lp
 
+    print('Doing Q')
     Q_hp_var = (Q_hp**2.).mean('time_counter').load()
     QSST_hp  = (Q_hp*SST_hp).mean('time_counter').load()
     QSST_lp  = (Q_lp*SST_lp).mean('time_counter').load()

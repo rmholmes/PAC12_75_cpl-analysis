@@ -7,11 +7,8 @@ import glob
 import sys
 
 # Files:
-experiments = ['09','17','18','26']
-# experiments = ['02','05','06','08','09','10','11','12','13',
-#               '15','16','17','18','19','20','21','24','25']
-# experiments = ['22','23']
-years = ['2015','2016','2017','2018']
+experiments = ['09']# ['09','17','18','26']
+years = ['2015']#,'2016','2017','2018']
 months = range(12)
 
 for e in range(len(experiments)):
@@ -22,7 +19,7 @@ for e in range(len(experiments)):
             yrstr = years[i]
             mnstr = '%02d' % (m+1)
 
-            fscr = 'fscripts/Process_' + expstr + '_' + yrstr + '_' + mnstr
+            fscr = 'fscripts/Process_3d_' + expstr + '_' + yrstr + '_' + mnstr
 
             # 3d vars:
             os.system('cp zonalhp_3d_sub.sub ' + fscr)

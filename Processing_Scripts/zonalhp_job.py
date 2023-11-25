@@ -5,18 +5,18 @@ import sys
 import glob
 import pac12_tools as ptools
 
-filt_width = 6.
+if __name__ == "__main__":
 
-base = sys.argv[1]
-year = sys.argv[2]
+    filt_width = 6.
 
-files_in = glob.glob(base + year + '*/croco_out_day.nc')
-files_in_mon = [f[:-6] + 'mon.nc' for f in files_in]
-files_out = [f[:-6] + 'mon_hp.nc' for f in files_in]
+    base = sys.argv[1]
+    year = sys.argv[2]
+    month = sys.argv[3]
 
-for i,f_in in enumerate(files_in):
-    f_out = files_out[i]
-    f_in_mon = files_in_mon[i]
-    sys.stdout.write(f_in + ' to ' + f_out + '\n')
-    ptools.calc_zhp_std_variables(f_in,f_in_mon,f_out,filt_width)
+    file_in_day = glob.glob(base + year + month + '*/croco_out_day.nc')[0]
+    file_in_mon = file_in_day[:-6] + 'mon.nc'
+    file_out = file_in_day[:-6] + 'mon_hp.nc'
+
+    sys.stdout.write(file_in_day + ' to ' + file_out + '\n');sys.stdout.flush();
+    ptools.calc_zhp_std_variables(file_in_day,file_in_mon,file_out,filt_width)
 
