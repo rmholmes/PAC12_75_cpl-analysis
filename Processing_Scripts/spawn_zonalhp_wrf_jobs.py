@@ -7,7 +7,10 @@ import glob
 import sys
 
 # Files:
-experiments = ['09','17','18','26']#['02','08','09','10','11','12','14','17','20','23','13','15','18','21','24','26','27','28','29','30'] # all perturbations 
+experiments = ['02','08','09','10','11',
+               '12','14','17','20','23',
+               '13','15','18','21','24',
+               '26','27','28','29','30']
 years = ['2015','2016','2017','2018']
 
 for e in range(len(experiments)):
@@ -16,7 +19,7 @@ for e in range(len(experiments)):
         expstr = 'exp' + experiments[e]
         yrstr = years[i]
 
-        fscr = 'fscripts/Process_' + expstr + '_' + yrstr
+        fscr = 'fscripts/Process_wrf_' + expstr + '_' + yrstr
 
         # surface vars:
         os.system('cp zonalhp_wrf_sub.sub ' + fscr)

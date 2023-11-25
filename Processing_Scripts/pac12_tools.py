@@ -233,11 +233,19 @@ def zlp_filt(var,width,typ='gau',cut=0.1,half_filt=True):
     # yielding NaNs within a filter width of land.
 
     dims = var.dims
+    dimsrem = list(dims)
     inds = [index for index,item in enumerate(dims) if item.startswith('x')]
     if (len(inds) != 1):
         raise RuntimeError("Error in zhp_filt: less than or greater than 1 zonal dimension found")
     else:
         x = dims[inds[0]]
+        dimsrem.remove(x)
+    inds = [index for index,item in enumerate(dims) if item.startswith('y')]
+    if (len(inds) != 1):
+        raise RuntimeError("Error in zhp_filt: less than or greater than 1 meridional dimension found")
+    else:
+        y = dims[inds[0]]
+        dimsrem.remove(y)
 
     dx = (var[x][1]-var[x][0]).values
 
@@ -262,8 +270,16 @@ def zlp_filt(var,width,typ='gau',cut=0.1,half_filt=True):
             var_rolled = var.rolling({x:nnok},center=True).construct('window')
 
             # Masked, broadcast weights:
-            (tmp,weight_bc) = xr.broadcast(var,weight)
-            weight_bc = weight_bc.where(~np.isnan(var_rolled))
+            if len(dimsrem)!=0:
+                sel_dict = {}
+                for dim in dimsrem:
+                    sel_dict[dim] = 0
+
+                (tmp,weight_bc) = xr.broadcast(var.isel(sel_dict),weight)
+                weight_bc = weight_bc.where(~np.isnan(var_rolled.isel(sel_dict)))
+            else:
+                (tmp,weight_bc) = xr.broadcast(var,weight)
+                weight_bc = weight_bc.where(~np.isnan(var_rolled))
             weight_bc = weight_bc/weight_bc.sum('window')
 
             # Smooth and re-mask variable:
