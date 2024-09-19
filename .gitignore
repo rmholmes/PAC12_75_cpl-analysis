@@ -1,5 +1,3 @@
-*.png
-*.pdf
 *scalarvars.txt
 __pycache__/
 *.ipynb_checkpoints*
